@@ -130,3 +130,6 @@ dmypy.json
 
 #VisualStudioCode settings
 .idea/
+
+#user token
+/MarketPolo_Py38/tokens.json
