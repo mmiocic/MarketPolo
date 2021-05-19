@@ -2,12 +2,37 @@ import json
 import requests
 import os
 import pprint
+import uuid
 
 session = requests.Session()
 account_url = None
 
 VALID_TIMES = {'5minute', '10minute', 'hour', 'day', 'week', 'month', '3month', 'year', 'all'}
 VALID_BOUNDS = {'regular', 'trading', 'extended', '24_7'}
+
+PAIRS = {
+    'BTCUSD': '3d961844-d360-45fc-989b-f6fca761d511',
+    'ETHUSD': '76637d50-c702-4ed1-bcb5-5b0732a81f48',
+    'ETCUSD': '7b577ce3-489d-4269-9408-796a0d1abb3a',
+    'BCHUSD': '2f2b77c4-e426-4271-ae49-18d5cb296d3a',
+    'BSVUSD': '086a8f9f-6c39-43fa-ac9f-57952f4a1ba6',
+    'LTCUSD': '383280b1-ff53-43fc-9c84-f01afd0989cd',
+    'DOGEUSD': '1ef78e1b-049b-4f12-90e5-555dcf2fe204'
+}
+
+ENDPOINTS = {
+    'auth': 'https://api.robinhood.com/oauth2/token/',
+    'currency_pairs': 'nummus.robinhood.com/currency_pairs',
+    'quotes': 'https://api.robinhood.com/marketdata/forex/quotes/{}/',
+    'historicals': 'https://api.robinhood.com/marketdata/forex/historicals/{}/?interval={}&span={}&bounds={}',
+    'orders': 'https://nummus.robinhood.com/orders/',
+    'order_status': 'https://nummus.robinhood.com/orders/{}',  # Order id
+    'order_cancel': 'https://nummus.robinhood.com/orders/{}/cancel/',
+    'nummus_accounts': 'https://nummus.robinhood.com/accounts/',
+    'holdings': 'https://nummus.robinhood.com/holdings/',
+    'api_accounts': 'https://api.robinhood.com/accounts/',
+    'portfolios': 'https://api.robinhood.com/accounts/{}/portfolio/'
+}
 
 
 def oauth(payload):
@@ -214,6 +239,12 @@ def quotes(instrument) -> dict:
     return r.json()
 
 
+def c_quotes(instrument) -> dict:
+    url = f'https://api.robinhood.com/marketdata/forex/quotes/{instrument.upper()}/'
+    r = session.get(url)
+    return r.json()
+
+
 def historicals(instrument: str, bounds: str = 'regular', interval: str = '5minute', span: str = 'day') -> dict:
     if bounds not in VALID_BOUNDS:
         raise RuntimeError(f"'{bounds}' is not valid as bounds.")
@@ -248,14 +279,109 @@ def crypto_positions(nonzero: bool = True) -> dict:
     # https://github.com/wang-ye/robinhood-crypto
     # go here to complete the crypto side of RH
 
-    url = ''
+    url = 'https://nummus.robinhood.com/holdings/'
     r = session.get(url, params={'nonzero': nonzero})
-    return r.json()
+    r = r.json()
+    crypto_positions = {}
+    for result in r['results']:
+        cum_quant = 0
+        cum_cost = 0
+        for cb in result['cost_bases']:
+            cum_quant += float(cb['direct_quantity'])
+            cum_cost += float(cb['direct_cost_basis'])
+        crypto_positions[result['currency']['code']] = {
+            'total_quantity': cum_quant,
+            'total_cost': cum_cost
+        }
+    return crypto_positions
 
+
+def c_accounts():
+    # url = ENDPOINTS['nummus_accounts']
+    # try:
+    #     data = session.get(url)
+    # except Exception as e:
+    #     raise e
+    # if 'results' in data:
+    #     return [x for x in data['results']]
+    # return []
+    url = ENDPOINTS['nummus_accounts']
+    r = session.get(url)
+    r = r.json()
+    # account_url = r['results'][0]['url']
+    print(r['results'])
+    return r['results'][0]
+
+
+# def accounts() -> dict:
+#     global account_url
+#     url = 'https://api.robinhood.com/accounts/'
+#     r = session.get(url).json()
+#     account_url = r['results'][0]['url']
+#     return r['results'][0]
+
+
+def crypto_account_id() -> dict:
+    accounts_info = c_accounts()
+    pprint.pprint(accounts_info)
+    if accounts_info:
+        return accounts_info['id']
+    else:
+        # LOG.error('account cannot be retrieved')
+        # raise AccountNotFoundException()
+        print('Error - account cannot be retrieved')
+    return None
+
+
+def trade(pair, **kwargs):
+    assert pair in PAIRS.keys(), 'pair {} is not in {}.'.format(pair, PAIRS.keys())
+    set(kwargs.keys()) == ['price', 'quantity', 'side', 'time_in_force', 'type']
+    payload = {
+        **{
+            'account_id': crypto_account_id(),
+            'currency_pair_id': PAIRS[pair],
+            'ref_id': str(uuid.uuid4()),
+        },
+        **kwargs
+    }
+    try:
+        # res = session('https://nummus.robinhood.com/orders/', json_payload=payload, method='post', timeout=5)
+        # res = session.post('https://nummus.robinhood.com/orders/', payload)
+        res = session.request(method='post',
+                              url='https://nummus.robinhood.com/orders/',
+                              json=payload,
+                              headers={'content-type': 'application/json'})
+    except Exception as e:
+        # raise TradeException()
+        print(e)
+    print(res.json())
+    return res.json()
+
+
+# return value:
+# {
+# 'account_id': 'abcd', 'cancel_url': None, 'created_at': '2018-04-22T14:07:37.103809-04:00', 'cumulative_quantity': '0.000111860000000000', 'currency_pair_id': '3d961844-d360-45fc-989b-f6fca761d511', 'executions': [{'effective_price': '8948.500000000000000000', 'id': 'hijk', 'quantity': '0.000111860000000000', 'timestamp': '2018-04-22T14:07:37.329000-04:00'}], 'id': 'order_id', 'last_transaction_at': '2018-04-22T14:07:37.329000-04:00', 'price': '9028.670000000000000000', 'quantity': '0.000111860000000000', 'ref_id': 'ref_id', 'side': 'buy', 'state': 'filled', 'time_in_force': 'gtc', 'type': 'market', 'updated_at': '2018-04-22T14:07:38.956584-04:00'
+# }
+def order_status(order_id):
+    url = ENDPOINTS['order_status'].format(order_id)
+    try:
+        res = session.get(url)
+    except Exception as e:
+        raise e
+    return res
+
+
+def order_cancel(self, order_id):
+    url = ENDPOINTS['order_cancel'].format(order_id)
+    try:
+        res = self.session_request(url, method='post')
+    except Exception as e:
+        raise e
+    return res
 
 
 def main():
-    pp=pprint.PrettyPrinter(indent=1, width=80, depth=None, stream=None, compact=False, sort_dicts=False)
+    pp = pprint.PrettyPrinter(indent=1, width=100, depth=None, stream=None, compact=False, sort_dicts=False)
 
     # you will be prompted for your username and password
     login()
@@ -272,17 +398,41 @@ def main():
     pp.pprint(positions())
     print('\n')
 
-    print('===Options Positions===\n')
-    pprint.pprint(options_positions())
+    # print('===Options Positions===\n')
+    # pprint.pprint(options_positions())
+    # print('\n')
+
+    print('===Crypto Positions===\n')
+    pprint.pprint(crypto_positions())
     print('\n')
 
     # print(instruments())
     # print(live())
+    # print(quotes('MSFT'))
     # print(fundamentals())
-    # print(quotes())
     # print(historicals())
     # print(orders())
     # print(search())
+
+    print(c_quotes('ETHUSD'))
+
+    c_quote = c_quotes('ETHUSD')['mark_price']
+    print(c_quote)
+
+    ###THIS TRADE WORKED!!!! DO NOT EXECUTE AGAIN###
+    # market_order_info = trade(
+    #     'ETHUSD',
+    #     price=round(float(c_quote), 2),
+    #     quantity="0.002941",
+    #     side="sell",
+    #     time_in_force="gtc",
+    #     type="market"
+    # )
+    pp.pprint(market_order_info)
+
+    order_id = market_order_info['id']
+    print('market order {} status: {}'.format(order_id, order_status(order_id)))
+
 
 if __name__ == "__main__":
     main()
