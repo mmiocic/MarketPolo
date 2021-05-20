@@ -297,28 +297,11 @@ def crypto_positions(nonzero: bool = True) -> dict:
 
 
 def c_accounts():
-    # url = ENDPOINTS['nummus_accounts']
-    # try:
-    #     data = session.get(url)
-    # except Exception as e:
-    #     raise e
-    # if 'results' in data:
-    #     return [x for x in data['results']]
-    # return []
     url = ENDPOINTS['nummus_accounts']
     r = session.get(url)
     r = r.json()
-    # account_url = r['results'][0]['url']
     print(r['results'])
     return r['results'][0]
-
-
-# def accounts() -> dict:
-#     global account_url
-#     url = 'https://api.robinhood.com/accounts/'
-#     r = session.get(url).json()
-#     account_url = r['results'][0]['url']
-#     return r['results'][0]
 
 
 def crypto_account_id() -> dict:
@@ -345,8 +328,6 @@ def trade(pair, **kwargs):
         **kwargs
     }
     try:
-        # res = session('https://nummus.robinhood.com/orders/', json_payload=payload, method='post', timeout=5)
-        # res = session.post('https://nummus.robinhood.com/orders/', payload)
         res = session.request(method='post',
                               url='https://nummus.robinhood.com/orders/',
                               json=payload,
